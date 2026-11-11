@@ -18,6 +18,9 @@ export const MIN_SUMMARY_TOKENS = 800;
 /** 每条消息除正文外的固定开销（role、分隔符等）。 */
 const PER_MESSAGE_OVERHEAD = 4;
 
+/** 单张图片的 token 估算，用于上下文预算（各家视觉模型大致 800~1200）。 */
+export const IMAGE_TOKEN_ESTIMATE = 1000;
+
 const SUMMARY_PROMPT = `你是一个对话摘要助手。请把给出的历史对话压缩成简洁要点，只保留：
 1. 用户的目标、偏好与约束；
 2. 已经确认的结论和事实；
@@ -30,25 +33,45 @@ export function countTokens(text: string): number {
   return encode(text).length;
 }
 
+/** 把消息压成可计数的文本；多模态块只保留占位符，避免把 URL/base64 算进 token。 */
 export function messageToText(message: BaseMessage): string {
   const content = message.content;
   const text =
     typeof content === "string"
       ? content
       : content
-          .map((block) =>
-            block.type === "text"
-              ? block.text
-              : JSON.stringify(block),
-          )
+          .map((block) => {
+            switch (block.type) {
+              case "text":
+                return block.text;
+              case "image_url":
+                return "[图片]";
+              case "file":
+              case "file_url":
+                return "[附件]";
+              case "audio":
+                return "[音频]";
+              default:
+                return `[${block.type}]`;
+            }
+          })
           .join(" ");
   const toolCalls = (message as AIMessage).tool_calls;
   const calls = toolCalls?.length ? JSON.stringify(toolCalls) : "";
   return `${message.type}: ${text} ${calls}`.trim();
 }
 
+function countImages(message: BaseMessage): number {
+  if (typeof message.content === "string") return 0;
+  return message.content.filter((block) => block.type === "image_url").length;
+}
+
 export function countMessageTokens(message: BaseMessage): number {
-  return countTokens(messageToText(message)) + PER_MESSAGE_OVERHEAD;
+  return (
+    countTokens(messageToText(message)) +
+    PER_MESSAGE_OVERHEAD +
+    countImages(message) * IMAGE_TOKEN_ESTIMATE
+  );
 }
 
 /**

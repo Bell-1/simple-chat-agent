@@ -16,6 +16,11 @@ import {
   updateSummary,
 } from "./short-term.js";
 import { buildContext } from "./context.js";
+import {
+  enrichLatestHumanMessage,
+  getMessageAttachments,
+} from "./attachments.js";
+import { getModelCapabilities } from "./model-capabilities.js";
 import { formatMemories, searchMemories } from "./long-term.js";
 
 /**
@@ -69,9 +74,20 @@ async function callModel(
     formatSummary(summary) +
     formatMemories(memories);
 
+  // 附件：最新一条人类消息里的图片转 data URL，文档/音视频注入解析文本
+  let modelMessages = context;
+  const hasAttachments = context.some(
+    (message) =>
+      message.type === "human" && getMessageAttachments(message).length > 0,
+  );
+  if (hasAttachments) {
+    const capabilities = await getModelCapabilities(configuration.model);
+    modelMessages = await enrichLatestHumanMessage(context, capabilities);
+  }
+
   const response = await model.invoke([
     { role: "system", content: systemPrompt },
-    ...context,
+    ...modelMessages,
   ]);
 
   // 记录模型响应的接收时间，供前端在消息底部展示

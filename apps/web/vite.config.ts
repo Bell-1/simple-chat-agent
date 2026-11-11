@@ -29,6 +29,11 @@ export default defineConfig(({ mode }) => {
             ? { Authorization: `Bearer ${openaiKey}` }
             : undefined,
         },
+        // 附件上传服务（apps/agents/src/uploads/server.ts）
+        "/uploads": {
+          target: `http://localhost:${env.UPLOAD_PORT || "2025"}`,
+          changeOrigin: true,
+        },
       },
     },
   };

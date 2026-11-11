@@ -3,7 +3,7 @@
   "author": "Your Name",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"turbo dev --filter=web\" \"turbo dev --filter=agents\"",
+    "dev": "concurrently \"turbo dev --filter=web\" \"turbo dev --filter=agents\" \"pnpm --filter agents dev:upload\"",
     "build": "turbo build",
     "turbo:command": "turbo",
     "format": "turbo format",

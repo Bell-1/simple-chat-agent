@@ -1,0 +1,31 @@
+{
+  "$comment": "模型能力配置。解析优先级：models 精确匹配 > 网关 /models 返回的 input_modalities > patterns > defaults。修改后需重启对应服务生效。",
+  "useGatewayMetadata": true,
+  "defaults": {
+    "vision": false,
+    "audio": false
+  },
+  "models": {
+    "deepseek-flash": {
+      "vision": true,
+      "audio": false
+    },
+    "deepseek-v4-pro": {
+      "vision": false
+    }
+  },
+  "patterns": [
+    {
+      "match": "(^|[-_/])(vl|vision|omni|multimodal)",
+      "vision": true
+    },
+    {
+      "match": "gpt-4o|gpt-4\\.1|gpt-5|claude-(3|4)",
+      "vision": true
+    },
+    {
+      "match": "(^|[-_/])(audio|realtime|tts)",
+      "audio": true
+    }
+  ]
+}
