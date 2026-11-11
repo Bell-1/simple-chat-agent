@@ -63,7 +63,7 @@
 | 模型接入 | `@langchain/openai` 兼容任意 OpenAI 协议网关（示例使用 DeepSeek） |
 | 对象存储 | Cloudflare R2 / S3 兼容（`@aws-sdk/client-s3` 预签名直传），本地磁盘兜底 |
 | 文件解析 | `pdf-parse`、`mammoth`、`exceljs`；音视频转写经网关 `/audio/transcriptions` |
-| 工具能力 | `@langchain/tavily` 联网搜索，另有检索 / 索引 / 记忆类示例图 |
+| 工具能力 | `@langchain/tavily` 联网搜索 |
 | 工程化 | pnpm workspace + Turborepo + ESLint + Prettier |
 
 ## 项目结构
@@ -89,9 +89,6 @@
 │           │   ├── server.ts       # HTTP 服务，默认 2025 端口
 │           │   ├── storage.ts      # R2 / S3 / 本地磁盘驱动
 │           │   └── parse/          # PDF / Word / Excel / 音视频解析
-│           ├── memory-agent        # 带长期记忆的示例图
-│           ├── research-agent      # 检索 / 索引示例图
-│           └── retrieval-agent     # 检索问答示例图
 ├── model-capabilities.json     # 前后端共用的模型能力配置（视觉 / 音频）
 ├── langgraph.json              # 图与运行环境注册
 └── .env                        # 统一环境变量（后端与前端代理共用）
@@ -141,7 +138,6 @@ pnpm --filter agents dev:upload  # 仅附件上传服务
 | `R2_PUBLIC_BASE_URL` | 可选，桶绑定的公开域名；不填则图片用预签名地址 |
 | `UPLOAD_URL_EXPIRES` | 可选，预签名有效期（秒），默认 7 天 |
 | `LANGSMITH_API_KEY` 等 | 可选，用于 LangSmith 追踪调试 |
-| `MONGODB_URI` / `PINECONE_*` / `COHERE_API_KEY` / `ELASTICSEARCH_*` | 记忆与检索类示例图使用 |
 
 > 项目对模型网关只要求「OpenAI 协议兼容」：只要网关提供 `/chat/completions` 与 `/models`，把地址和 Key 填进环境变量即可，无需改代码。音频转写额外依赖网关提供 `/audio/transcriptions`。
 

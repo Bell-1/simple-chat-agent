@@ -415,6 +415,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  // eslint-disable-next-line no-console
   console.log(`[uploads] listening on http://localhost:${PORT}`);
 });
