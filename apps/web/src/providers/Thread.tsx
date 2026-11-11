@@ -1,6 +1,6 @@
 import { validate } from "uuid";
 import { getApiKey } from "@/lib/api-key";
-import { Thread } from "@langchain/langgraph-sdk";
+import { Message, Thread } from "@langchain/langgraph-sdk";
 import { useQueryState } from "nuqs";
 import {
   createContext,
@@ -21,6 +21,8 @@ interface ThreadContextType {
   setThreadsLoading: Dispatch<SetStateAction<boolean>>;
   deleteThread: (threadId: string) => Promise<void>;
   renameThread: (threadId: string, title: string) => Promise<void>;
+  /** 以给定消息作为初始历史新建一个会话，返回新会话 id */
+  createBranch: (messages: Message[]) => Promise<string>;
 }
 
 const ThreadContext = createContext<ThreadContextType | undefined>(undefined);
@@ -81,6 +83,36 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     [apiUrl],
   );
 
+  const createBranch = useCallback(
+    async (messages: Message[]): Promise<string> => {
+      if (!apiUrl || !assistantId) throw new Error("缺少部署地址或助手 ID");
+      const client = createClient(apiUrl, getApiKey() ?? undefined);
+      // assistantId 是图名时通过 graphId 绑定；是真实 assistant UUID 时放在 metadata 里，
+      // 否则服务端会认为该 thread 没有 graph ID，写入状态时直接 400
+      const isAssistantUuid = validate(assistantId);
+      const thread = await client.threads.create({
+        graphId: isAssistantUuid ? undefined : assistantId,
+        metadata: isAssistantUuid
+          ? { assistant_id: assistantId }
+          : getThreadSearchMetadata(assistantId),
+      });
+      try {
+        // 把截断到当前消息的历史写入新会话，不清空原会话
+        await client.threads.updateState(thread.thread_id, {
+          values: { messages },
+        });
+      } catch (error) {
+        // 写入失败就删掉这个空会话，避免历史列表里留下脏数据
+        await client.threads.delete(thread.thread_id).catch(() => undefined);
+        throw error;
+      }
+      const next = await getThreads();
+      setThreads(next);
+      return thread.thread_id;
+    },
+    [apiUrl, assistantId, getThreads],
+  );
+
   const value = {
     getThreads,
     threads,
@@ -89,6 +121,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     setThreadsLoading,
     deleteThread,
     renameThread,
+    createBranch,
   };
 
   return (

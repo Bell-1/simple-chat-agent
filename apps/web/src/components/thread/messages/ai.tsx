@@ -2,7 +2,7 @@ import { parsePartialJson } from "@langchain/core/output_parsers";
 import { useStreamContext } from "@/providers/Stream";
 import { AIMessage, Message } from "@langchain/langgraph-sdk";
 import { getContentString } from "../utils";
-import { BranchSwitcher, CommandBar } from "./shared";
+import { BranchSwitcher, CommandBar, MessageStats, getMessageCreatedAt, sumUsage, TokenUsage } from "./shared";
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,10 @@ import { useMemo } from "react";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
 import { ThreadView } from "../agent-inbox";
 import { useToolCallsStore } from "@/stores/tool-calls";
+import { useModelsStore } from "@/stores/models";
+import { useThreads } from "@/providers/Thread";
+import { useQueryState } from "nuqs";
+import { toast } from "sonner";
 import { GenericInterruptView } from "./generic-interrupt";
 
 function CustomComponent({
@@ -91,6 +95,46 @@ export function AssistantMessage({
   const meta = message ? thread.getMessagesMetadata(message) : undefined;
   const threadInterrupt = thread.interrupt;
 
+  const { createBranch } = useThreads();
+  const [, setThreadId] = useQueryState("threadId");
+  const selectedModel = useModelsStore((s) => s.selectedModel);
+
+  /** 从当前 AI 消息的上一个检查点重跑，生成新的分支 */
+  const handleRefresh = () => {
+    if (!message || isLoading) return;
+    const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
+    if (!parentCheckpoint) {
+      // 检查点历史还没加载完或该消息已超出可回溯范围
+      toast.error("暂时无法重新生成：未找到该消息的检查点");
+      return;
+    }
+    void thread.submit(
+      {},
+      {
+        checkpoint: parentCheckpoint,
+        streamMode: ["values"],
+        config: { configurable: { model: selectedModel } },
+      },
+    );
+  };
+
+  /** 以当前消息为结尾的历史新建一个会话，原会话不受影响 */
+  const handleBranch = async () => {
+    if (!message?.id) return;
+    const index = thread.messages.findIndex((m) => m.id === message.id);
+    if (index === -1) return;
+    try {
+      const newThreadId = await createBranch(
+        thread.messages.slice(0, index + 1),
+      );
+      setThreadId(newThreadId);
+    } catch (error) {
+      toast.error(
+        `新建分支会话失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
   // 工具结果统一内联到对应的工具调用块里展示，独立的 tool 消息由列表层过滤掉
   const toolResults = useMemo(
     () => collectToolResults(thread.messages),
@@ -116,6 +160,10 @@ export function AssistantMessage({
     toolCalls: NonNullable<AIMessage["tool_calls"]>;
     isOwner: boolean;
     isStreaming: boolean;
+    /** 本轮所有模型调用的 token 合计 */
+    usage?: TokenUsage;
+    /** 本轮最后一条 AI 消息，用量只在这一条上展示，避免重复 */
+    lastAiId?: string;
   }>(() => {
     const messages = thread.messages;
     const index = message
@@ -166,6 +214,8 @@ export function AssistantMessage({
       toolCalls: allToolCalls,
       isOwner: aiMessages[0]?.id === message?.id,
       isStreaming: isLoading && containsLastAi,
+      usage: sumUsage(aiMessages),
+      lastAiId: aiMessages[aiMessages.length - 1]?.id,
     };
   }, [thread.messages, message, isLoading, lastAiMessageId]);
 
@@ -248,6 +298,13 @@ export function AssistantMessage({
               content={contentString}
               isLoading={isLoading}
               isAiMessage={true}
+              onRefresh={handleRefresh}
+              onBranch={handleBranch}
+            />
+            <MessageStats
+              // 一轮里可能有多次模型调用，用量汇总后只在最后一条 AI 消息上展示
+              usage={message && turn.lastAiId === message.id ? turn.usage : undefined}
+              createdAt={message ? getMessageCreatedAt(message) : undefined}
             />
           </div>
         )}

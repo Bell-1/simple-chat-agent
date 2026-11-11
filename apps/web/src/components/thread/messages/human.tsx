@@ -4,8 +4,11 @@ import { useState } from "react";
 import { getContentString } from "../utils";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
-import { BranchSwitcher, CommandBar } from "./shared";
+import { BranchSwitcher, CommandBar, MessageStats, getMessageCreatedAt } from "./shared";
 import { useModelsStore } from "@/stores/models";
+import { useThreads } from "@/providers/Thread";
+import { useQueryState } from "nuqs";
+import { toast } from "sonner";
 
 function EditableContent({
   value,
@@ -44,6 +47,8 @@ export function HumanMessage({
   const selectedModel = useModelsStore((s) => s.selectedModel);
   const meta = thread.getMessagesMetadata(message);
   const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
+  const { createBranch } = useThreads();
+  const [, setThreadId] = useQueryState("threadId");
 
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -52,7 +57,12 @@ export function HumanMessage({
   const handleSubmitEdit = () => {
     setIsEditing(false);
 
-    const newMessage: Message = { type: "human", content: value };
+    const newMessage: Message = {
+      type: "human",
+      content: value,
+      // 记录发送时间，随 checkpoint 一起持久化，刷新后仍可展示
+      additional_kwargs: { created_at: new Date().toISOString() },
+    };
     thread.submit(
       { messages: [newMessage] },
       {
@@ -71,6 +81,20 @@ export function HumanMessage({
         },
       },
     );
+  };
+
+  /** 以这条用户消息为结尾的历史新建会话，便于换个问法继续 */
+  const handleBranch = async () => {
+    const index = thread.messages.findIndex((m) => m.id === message.id);
+    if (index === -1) return;
+    try {
+      const newThreadId = await createBranch(
+        thread.messages.slice(0, index + 1),
+      );
+      setThreadId(newThreadId);
+    } catch {
+      toast.error("新建分支会话失败");
+    }
   };
 
   return (
@@ -118,7 +142,9 @@ export function HumanMessage({
             }}
             handleSubmitEdit={handleSubmitEdit}
             isHumanMessage={true}
+            onBranch={handleBranch}
           />
+          <MessageStats createdAt={getMessageCreatedAt(message)} />
         </div>
       </div>
     </div>

@@ -81,6 +81,10 @@ const StreamSession = ({
     apiKey: apiKey ?? undefined,
     assistantId,
     threadId: threadId ?? null,
+    // 记录运行中的 runId，切走会话再切回来时自动 join 未完成的流
+    reconnectOnMount: true,
+    // 拉取检查点历史：重新生成、编辑并重发、分支切换都依赖 meta.firstSeenState.parent_checkpoint
+    fetchStateHistory: true,
     onCustomEvent: (event, options) => {
       options.mutate((prev) => {
         const ui = uiMessageReducer(prev.ui ?? [], event);

@@ -34,6 +34,9 @@ yarn-error.log*
 .env*.local
 .env
 
+# 本地长期记忆数据
+apps/agents/.data/
+
 # vercel
 .vercel
 

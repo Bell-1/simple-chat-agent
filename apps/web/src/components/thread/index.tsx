@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
 import { useThreads } from "@/providers/Thread";
-import { useState, FormEvent } from "react";
+import { useState, type SubmitEventHandler } from "react";
 import { Button } from "../ui/button";
 import { Message } from "@langchain/langgraph-sdk";
 import { AssistantMessage, AssistantMessageLoading } from "./messages/ai";
@@ -29,6 +29,7 @@ import { useModelsStore } from "@/stores/models";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import ThreadHistory from "./history";
 import { getContentString } from "./utils";
+import { getReasoningString } from "./messages/reasoning";
 import { toast } from "sonner";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
@@ -86,12 +87,25 @@ export function Thread() {
   const fetchModels = useModelsStore((s) => s.fetchModels);
   const modelsLoading = useModelsStore((s) => s.isLoading);
   const [input, setInput] = useState("");
-  const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useStreamContext();
   const messages = stream.messages;
   const isLoading = stream.isLoading;
+
+  // 是否在等待 AI 输出：乐观插入的 human 消息、工具结果之后，或刚创建还没内容的 AI 消息
+  const lastMessage = messages[messages.length - 1];
+  const lastAiIsBlank =
+    lastMessage?.type === "ai" &&
+    getContentString(lastMessage.content).length === 0 &&
+    !lastMessage.tool_calls?.length &&
+    getReasoningString(lastMessage).length === 0;
+  const isWaitingForAI =
+    isLoading &&
+    (!lastMessage ||
+      lastMessage.type === "human" ||
+      lastMessage.type === "tool" ||
+      lastAiIsBlank);
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -128,29 +142,16 @@ export function Thread() {
     }
   }, [stream.error]);
 
-  // TODO: this should be part of the useStream hook
-  const prevMessageLength = useRef(0);
-  useEffect(() => {
-    if (
-      messages.length !== prevMessageLength.current &&
-      messages?.length &&
-      messages[messages.length - 1].type === "ai"
-    ) {
-      setFirstTokenReceived(true);
-    }
-
-    prevMessageLength.current = messages.length;
-  }, [messages]);
-
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit: SubmitEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !selectedModel) return;
-    setFirstTokenReceived(false);
 
     const newHumanMessage: Message = {
       id: uuidv4(),
       type: "human",
       content: input,
+      // 记录发送时间，随 checkpoint 一起持久化，刷新后仍可展示
+      additional_kwargs: { created_at: new Date().toISOString() },
     };
 
     const toolMessages = ensureToolCallsHaveResponses(stream.messages);
@@ -362,9 +363,7 @@ export function Thread() {
                     isLoading={isLoading}
                   />
                 )}
-                {isLoading && !firstTokenReceived && (
-                  <AssistantMessageLoading />
-                )}
+                {isWaitingForAI && <AssistantMessageLoading />}
               </>
             }
             footer={
