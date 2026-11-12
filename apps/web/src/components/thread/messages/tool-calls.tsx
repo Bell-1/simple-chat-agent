@@ -11,10 +11,34 @@ import { cn } from "@/lib/utils";
 
 type ToolStatus = "pending" | "running" | "success" | "error";
 
+export interface Citation {
+  index: number;
+  attachmentId: string;
+  sourceName: string;
+  chunkIndex: number;
+  score?: number;
+}
+
 interface ToolResultInfo {
   content: string;
   status?: string;
   name?: string;
+  /** 工具返回的 artifact（如资料检索的 citations） */
+  artifact?: unknown;
+}
+
+/** 从工具 artifact 中提取引用；没有则返回空数组。 */
+export function extractCitations(artifact: unknown): Citation[] {
+  if (!artifact || typeof artifact !== "object") return [];
+  const citations = (artifact as { citations?: unknown }).citations;
+  if (!Array.isArray(citations)) return [];
+  return citations.filter(
+    (item): item is Citation =>
+      !!item &&
+      typeof item === "object" &&
+      typeof (item as Citation).attachmentId === "string" &&
+      typeof (item as Citation).sourceName === "string",
+  );
 }
 
 function stringifyContent(content: ToolMessage["content"]): string {
@@ -39,6 +63,7 @@ export function collectToolResults(
       content: stringifyContent(toolMessage.content),
       status: toolMessage.status,
       name: toolMessage.name,
+      artifact: (toolMessage as ToolMessage & { artifact?: unknown }).artifact,
     });
   }
   return results;

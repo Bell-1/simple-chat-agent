@@ -34,6 +34,17 @@ export default defineConfig(({ mode }) => {
           target: `http://localhost:${env.UPLOAD_PORT || "2025"}`,
           changeOrigin: true,
         },
+        // 认证接口与上传服务同进程，复用 Cookie 会话
+        "/api": {
+          target: `http://localhost:${env.UPLOAD_PORT || "2025"}`,
+          changeOrigin: true,
+        },
+        // LangGraph 服务统一走同源代理，前端无需再配置 VITE_API_URL
+        "/lg": {
+          target: `http://localhost:${env.LANGGRAPH_PORT || "2024"}`,
+          rewrite: (path) => path.replace(/^\/lg/, ""),
+          changeOrigin: true,
+        },
       },
     },
   };

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { BranchSwitcher, CommandBar, MessageStats, getMessageCreatedAt } from "./shared";
 import { useModelsStore } from "@/stores/models";
+import { useAuthStore } from "@/stores/auth";
 import { useThreads } from "@/providers/Thread";
 import { useQueryState } from "nuqs";
 import { toast } from "sonner";
@@ -122,6 +123,7 @@ export function HumanMessage({
 }) {
   const thread = useStreamContext();
   const selectedModel = useModelsStore((s) => s.selectedModel);
+  const userId = useAuthStore((s) => s.user?.id);
   const meta = thread.getMessagesMetadata(message);
   const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
   const { createBranch } = useThreads();
@@ -154,8 +156,8 @@ export function HumanMessage({
       {
         checkpoint: parentCheckpoint,
         streamMode: ["values"],
-        // 模型只由前端模型列表决定，编辑消息重发时同样需要透传
-        config: { configurable: { model: selectedModel } },
+        // 模型与用户都只由前端决定，编辑重发同样需要透传
+        config: { configurable: { model: selectedModel, userId } },
         optimisticValues: (prev) => {
           const values = meta?.firstSeenState?.values;
           if (!values) return prev;

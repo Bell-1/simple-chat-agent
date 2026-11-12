@@ -121,3 +121,14 @@ export async function discardAttachment(id: string): Promise<void> {
     body: JSON.stringify({ id }),
   }).catch(() => undefined);
 }
+
+export interface LibraryData {
+  attachments: Attachment[];
+  stats: { documents: number; chunks: number };
+}
+
+/** 当前用户的资料库：附件列表与向量索引统计。 */
+export async function fetchLibrary(): Promise<LibraryData> {
+  const response = await fetch("/uploads/mine");
+  return (await jsonOrThrow(response)) as LibraryData;
+}

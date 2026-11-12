@@ -38,6 +38,8 @@ import { toast } from "sonner";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
+import { UserMenu } from "@/components/auth/user-menu";
+import { useAuthStore } from "@/stores/auth";
 import {
   MAX_ATTACHMENTS,
   discardAttachment,
@@ -196,6 +198,7 @@ export function Thread() {
   const setSelectedModel = useModelsStore((s) => s.setSelectedModel);
   const fetchModels = useModelsStore((s) => s.fetchModels);
   const modelsLoading = useModelsStore((s) => s.isLoading);
+  const userId = useAuthStore((s) => s.user?.id);
   const [input, setInput] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<
     PendingAttachment[]
@@ -407,8 +410,8 @@ export function Thread() {
       { messages: [...toolMessages, newHumanMessage] },
       {
         streamMode: ["values"],
-        // 模型只由前端模型列表决定，后端不再读取环境变量兜底
-        config: { configurable: { model: selectedModel } },
+        // 模型与用户都只由前端决定，后端据此选择模型、隔离记忆
+        config: { configurable: { model: selectedModel, userId } },
         optimisticValues: (prev) => ({
           ...prev,
           messages: [
@@ -442,7 +445,10 @@ export function Thread() {
   const currentTitle = threadTitle || messageTitle || "对话";
 
   return (
-    <div className="flex w-full h-screen overflow-hidden">
+    <div className="relative flex w-full h-screen overflow-hidden">
+      <div className="absolute right-4 top-2 z-30">
+        <UserMenu />
+      </div>
       <div className="relative lg:flex hidden">
         <motion.div
           className="absolute h-full border-r bg-white overflow-hidden z-20"

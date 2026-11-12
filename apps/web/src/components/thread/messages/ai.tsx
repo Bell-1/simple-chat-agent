@@ -6,7 +6,14 @@ import { BranchSwitcher, CommandBar, MessageStats, getMessageCreatedAt, sumUsage
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
-import { ToolCalls, collectToolResults, getToolSummary } from "./tool-calls";
+import {
+  ToolCalls,
+  collectToolResults,
+  extractCitations,
+  getToolSummary,
+  type Citation,
+} from "./tool-calls";
+import { CitationList } from "./citations";
 import { ReasoningPanel, getReasoningString } from "./reasoning";
 import { CollapsiblePanel } from "./collapsible";
 import { LoaderCircle, Sparkles } from "lucide-react";
@@ -16,6 +23,7 @@ import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
 import { ThreadView } from "../agent-inbox";
 import { useToolCallsStore } from "@/stores/tool-calls";
 import { useModelsStore } from "@/stores/models";
+import { useAuthStore } from "@/stores/auth";
 import { useThreads } from "@/providers/Thread";
 import { useQueryState } from "nuqs";
 import { toast } from "sonner";
@@ -98,6 +106,7 @@ export function AssistantMessage({
   const { createBranch } = useThreads();
   const [, setThreadId] = useQueryState("threadId");
   const selectedModel = useModelsStore((s) => s.selectedModel);
+  const userId = useAuthStore((s) => s.user?.id);
 
   /** 从当前 AI 消息的上一个检查点重跑，生成新的分支 */
   const handleRefresh = () => {
@@ -113,7 +122,7 @@ export function AssistantMessage({
       {
         checkpoint: parentCheckpoint,
         streamMode: ["values"],
-        config: { configurable: { model: selectedModel } },
+        config: { configurable: { model: selectedModel, userId } },
       },
     );
   };
@@ -223,6 +232,23 @@ export function AssistantMessage({
     ? ""
     : getToolSummary(turn.toolCalls, toolResults, turn.isStreaming);
 
+  // 汇总本轮工具调用里返回的资料引用，按附件+分块去重
+  const turnCitations = useMemo<Citation[]>(() => {
+    const seen = new Set<string>();
+    const list: Citation[] = [];
+    for (const call of turn.toolCalls) {
+      const result = toolResults.get(call.id ?? "");
+      if (!result) continue;
+      for (const citation of extractCitations(result.artifact)) {
+        const key = `${citation.attachmentId}:${citation.chunkIndex}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        list.push(citation);
+      }
+    }
+    return list;
+  }, [turn.toolCalls, toolResults]);
+
   return (
     <div className="flex items-start mr-auto gap-2 group">
       <div className="flex flex-col gap-2">
@@ -269,6 +295,10 @@ export function AssistantMessage({
           <div className="py-1">
             <MarkdownText>{contentString}</MarkdownText>
           </div>
+        )}
+
+        {turnCitations.length > 0 && turn.lastAiId === message?.id && (
+          <CitationList citations={turnCitations} />
         )}
 
         {message && <CustomComponent message={message} thread={thread} />}

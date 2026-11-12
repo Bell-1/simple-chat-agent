@@ -8,6 +8,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
 
 import { addMemory } from "./long-term.js";
+import { searchChunks } from "../rag/search.js";
 
 /**
  * Tavily search tool configuration
@@ -44,6 +45,67 @@ const remember = tool(
 );
 
 /**
+ * 资料检索工具：在用户自己上传过的文件里做向量召回。
+ * 返回的 artifact 会随 ToolMessage 一起进入状态，供前端渲染引用。
+ */
+const searchKnowledge = tool(
+  async ({ query }, config?: RunnableConfig) => {
+    const userId =
+      (config?.configurable?.userId as string | undefined) || "default";
+
+    let hits;
+    try {
+      hits = await searchChunks({ userId, query });
+    } catch (error) {
+      return [
+        `资料检索暂不可用：${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { citations: [] },
+      ] as const;
+    }
+
+    if (hits.length === 0) {
+      return [
+        "未在该用户上传的资料中找到相关内容。不要凭空编造资料内容。",
+        { citations: [] },
+      ] as const;
+    }
+
+    const content = hits
+      .map(
+        (hit, index) =>
+          `[${index + 1}] ${hit.sourceName} · 第 ${hit.chunkIndex + 1} 段\n${hit.content}`,
+      )
+      .join("\n\n");
+
+    const citations = hits.map((hit, index) => ({
+      index: index + 1,
+      attachmentId: hit.attachmentId,
+      sourceName: hit.sourceName,
+      chunkIndex: hit.chunkIndex,
+      score: Number(hit.score.toFixed(4)),
+    }));
+
+    return [content, { citations }] as const;
+  },
+  {
+    name: "search_knowledge",
+    description:
+      "在用户上传过的资料（PDF、Word、Excel、文本等）中检索相关内容。" +
+      "当用户提到「我之前上传的文件/资料/文档/报告/表格」、询问具体资料里的细节，" +
+      "或需要基于用户私有文件回答时使用。回答时用 [1][2] 标注来源，并说明文件名。" +
+      "如果检索结果为空，明确告诉用户没有找到，不要编造。",
+    schema: z.object({
+      query: z
+        .string()
+        .describe("检索问题或关键词，尽量具体，包含用户提到的对象与限定条件"),
+    }),
+    responseFormat: "content_and_artifact",
+  },
+);
+
+/**
  * Export an array of all available tools
  * Add new tools to this array to make them available to the agent
  *
@@ -51,4 +113,4 @@ const remember = tool(
  * and add them to this array.
  * See https://js.langchain.com/docs/how_to/custom_tools/#tool-function for more information.
  */
-export const TOOLS = [searchTavily, remember];
+export const TOOLS = [searchTavily, remember, searchKnowledge];

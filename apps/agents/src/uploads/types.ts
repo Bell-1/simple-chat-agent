@@ -29,6 +29,8 @@ export interface AttachmentRecord {
   size: number;
   status: "pending" | "ready";
   createdAt: string;
+  /** 上传者 id，用于归属与后续按用户检索 */
+  userId?: string;
   parse?: ParseState;
 }
 

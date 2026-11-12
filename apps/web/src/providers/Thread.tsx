@@ -1,7 +1,6 @@
 import { validate } from "uuid";
 import { getApiKey } from "@/lib/api-key";
 import { Message, Thread } from "@langchain/langgraph-sdk";
-import { useQueryState } from "nuqs";
 import {
   createContext,
   useContext,
@@ -12,6 +11,7 @@ import {
   SetStateAction,
 } from "react";
 import { createClient } from "./client";
+import { useAuthStore } from "@/stores/auth";
 
 interface ThreadContextType {
   getThreads: () => Promise<Thread[]>;
@@ -38,18 +38,23 @@ function getThreadSearchMetadata(
 }
 
 export function ThreadProvider({ children }: { children: ReactNode }) {
-  const [apiUrl] = useQueryState("apiUrl");
-  const [assistantId] = useQueryState("assistantId");
+  // 默认走 Vite 同源代理，无需在 URL 中配置；SDK 需要绝对地址
+  const apiUrl =
+    import.meta.env.VITE_API_URL || `${window.location.origin}/lg`;
+  const assistantId = import.meta.env.VITE_ASSISTANT_ID || "agent";
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
 
   const getThreads = useCallback(async (): Promise<Thread[]> => {
     if (!apiUrl || !assistantId) return [];
     const client = createClient(apiUrl, getApiKey() ?? undefined);
+    // 会话按用户隔离：未登录时退回默认桶（仅本地调试会出现）
+    const userId = useAuthStore.getState().user?.id;
 
     const threads = await client.threads.search({
       metadata: {
         ...getThreadSearchMetadata(assistantId),
+        ...(userId ? { user_id: userId } : {}),
       },
       limit: 100,
     });
@@ -90,11 +95,15 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       // assistantId 是图名时通过 graphId 绑定；是真实 assistant UUID 时放在 metadata 里，
       // 否则服务端会认为该 thread 没有 graph ID，写入状态时直接 400
       const isAssistantUuid = validate(assistantId);
+      const userId = useAuthStore.getState().user?.id;
       const thread = await client.threads.create({
         graphId: isAssistantUuid ? undefined : assistantId,
-        metadata: isAssistantUuid
-          ? { assistant_id: assistantId }
-          : getThreadSearchMetadata(assistantId),
+        metadata: {
+          ...(isAssistantUuid
+            ? { assistant_id: assistantId }
+            : getThreadSearchMetadata(assistantId)),
+          ...(userId ? { user_id: userId } : {}),
+        },
       });
       try {
         // 把截断到当前消息的历史写入新会话，不清空原会话

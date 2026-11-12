@@ -57,6 +57,16 @@ export async function deleteRecord(id: string): Promise<void> {
   });
 }
 
+/** 列出某个用户已上传完成的附件，按创建时间倒序。 */
+export async function listRecordsByUser(
+  userId: string,
+): Promise<AttachmentRecord[]> {
+  const data = await readAll();
+  return Object.values(data)
+    .filter((record) => record.userId === userId && record.status === "ready")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 /** 列出某个时间点之前仍处于 pending 的记录，供清理任务使用。 */
 export async function listExpiredPending(
   before: Date,

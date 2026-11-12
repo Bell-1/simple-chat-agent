@@ -14,6 +14,7 @@ import { HumanInterrupt, HumanResponse } from "@langchain/langgraph/prebuilt";
 import { END } from "@langchain/langgraph/web";
 import { useStreamContext } from "@/providers/Stream";
 import { useModelsStore } from "@/stores/models";
+import { useAuthStore } from "@/stores/auth";
 
 interface UseInterruptedActionsInput {
   interrupt: HumanInterrupt;
@@ -61,6 +62,7 @@ export default function useInterruptedActions({
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const selectedModel = useModelsStore((s) => s.selectedModel);
+  const userId = useAuthStore((s) => s.user?.id);
   const [streamFinished, setStreamFinished] = useState(false);
   const initialHumanInterruptEditValue = useRef<Record<string, string>>({});
   const [selectedSubmitType, setSelectedSubmitType] = useState<SubmitType>();
@@ -90,8 +92,8 @@ export default function useInterruptedActions({
           command: {
             resume: response,
           },
-          // 模型只由前端模型列表决定，恢复运行时同样需要透传
-          config: { configurable: { model: selectedModel } },
+          // 模型与用户都只由前端决定，恢复运行时同样需要透传
+          config: { configurable: { model: selectedModel, userId } },
         },
       );
       return true;
@@ -263,7 +265,7 @@ export default function useInterruptedActions({
           command: {
             goto: END,
           },
-          config: { configurable: { model: selectedModel } },
+          config: { configurable: { model: selectedModel, userId } },
         },
       );
 
